@@ -95,17 +95,6 @@ public sealed class TranscriptRequest
     [JsonPropertyName("redact_pii_sub")]
     public string? RedactPiiSub { get; init; }
 
-    /// <summary>Where AssemblyAI POSTs <c>{"transcript_id", "status"}</c> when the job finishes.</summary>
-    [JsonPropertyName("webhook_url")]
-    public string? WebhookUrl { get; init; }
-
-    /// <summary>Header AssemblyAI adds to the webhook request. Set both name and value, or neither.</summary>
-    [JsonPropertyName("webhook_auth_header_name")]
-    public string? WebhookAuthHeaderName { get; init; }
-
-    [JsonPropertyName("webhook_auth_header_value")]
-    public string? WebhookAuthHeaderValue { get; init; }
-
     /// <summary>
     /// Speech Understanding tasks to run as part of the job, such as Speaker Identification. Requires
     /// <see cref="SpeakerLabels"/> (or <see cref="Multichannel"/>).

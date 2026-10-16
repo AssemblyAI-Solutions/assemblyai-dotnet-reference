@@ -71,6 +71,12 @@ else
     var sent = TimeSpan.Zero;
     foreach (var chunk in wav.Frames(frame))
     {
+        // If the request has already failed (for example the connection dropped), stop feeding audio.
+        if (pending.IsCompleted)
+        {
+            break;
+        }
+
         await microphone.WriteAsync(chunk);
         sent += frame;
         var ahead = sent - pacer.Elapsed;

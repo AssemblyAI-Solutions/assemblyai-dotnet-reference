@@ -43,8 +43,19 @@ var request = new TranscriptRequest
         SpeakerProfile.ForRole("Patient", "Describes their symptoms, history and medications")),
 };
 
-Console.WriteLine("Transcribing...");
-var transcript = await client.Transcripts.TranscribeAsync(request);
+// 3. Submit, then poll. SubmitAsync returns as soon as the job is queued; WaitForCompletionAsync polls
+//    GET /v2/transcript/{id} (3 s at first, backing off to 15 s, with jitter) until it's completed or errored.
+//    In production, store submitted.Id with your record: the job keeps running on AssemblyAI's side, so after a
+//    restart you can call WaitForCompletionAsync with the stored id and pick up where you left off.
+var submitted = await client.Transcripts.SubmitAsync(request);
+Console.WriteLine($"Submitted {submitted.Id}. Polling for the result...");
+
+var transcript = await client.Transcripts.WaitForCompletionAsync(submitted.Id);
+if (transcript.IsError)
+{
+    Console.Error.WriteLine($"Transcription failed: {transcript.Error}");
+    return 1;
+}
 
 Console.WriteLine($"Transcript {transcript.Id}: {transcript.AudioDuration}s of audio, model {transcript.SpeechModelUsed}");
 foreach (var warning in transcript.Metadata?.Warnings ?? Array.Empty<TranscriptWarning>())
@@ -65,7 +76,7 @@ foreach (var utterance in utterances)
     Console.WriteLine($"[{TimeSpan.FromMilliseconds(utterance.Start):mm\\:ss}] {utterance.Speaker}: {utterance.Text}");
 }
 
-// 3. Optional: draft a SOAP note through LLM Gateway, from the speaker-attributed utterances.
+// 4. Optional: draft a SOAP note through LLM Gateway, from the speaker-attributed utterances.
 if (soapNote)
 {
     var dialogue = string.Join("\n", utterances.Select(u => $"{u.Speaker}: {u.Text}"));
@@ -85,7 +96,7 @@ if (soapNote)
     Console.WriteLine(completion.Text);
 }
 
-// 4. Delete the transcript (and the uploaded audio) as soon as you've stored what you need.
+// 5. Delete the transcript (and the uploaded audio) as soon as you've stored what you need.
 if (!keep)
 {
     await client.Transcripts.DeleteAsync(transcript.Id);

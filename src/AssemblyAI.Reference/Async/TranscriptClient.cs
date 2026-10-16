@@ -60,8 +60,9 @@ public sealed class TranscriptClient
     }
 
     /// <summary>
-    /// Polls until the transcript is <c>completed</c> or <c>error</c> and returns it either way, so check
-    /// <see cref="Transcript.IsError"/>. At high volume, prefer webhooks and keep polling as a fallback.
+    /// Polls <c>GET /v2/transcript/{id}</c> until the transcript is <c>completed</c> or <c>error</c> and returns it
+    /// either way, so check <see cref="Transcript.IsError"/>. The job keeps running on AssemblyAI's side whether or
+    /// not you're polling, so store the id when you submit and call this again after a restart to pick it back up.
     /// </summary>
     public async Task<Transcript> WaitForCompletionAsync(string transcriptId, PollingOptions? polling = null, CancellationToken cancellationToken = default)
     {
@@ -125,8 +126,10 @@ public sealed class TranscriptClient
 }
 
 /// <summary>
-/// Polling cadence. The defaults start at 3 seconds (what the docs' examples use) and back off to 15 seconds with
-/// ±25% jitter, so many jobs finishing together don't poll in lockstep.
+/// Polling cadence. The defaults start at 3 seconds and back off to 15 seconds with ±25% jitter, so many jobs
+/// in flight don't poll in lockstep. Polls and submissions share the HTTP rate limit (20,000 requests per five
+/// minutes), so widen <see cref="MaxInterval"/> if you run many hundreds of jobs at once.
+/// Docs: https://www.assemblyai.com/docs/pre-recorded-audio/rate-limits
 /// </summary>
 public sealed class PollingOptions
 {

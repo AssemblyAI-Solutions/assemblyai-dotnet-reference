@@ -2,11 +2,10 @@
 
 Calling AssemblyAI from .NET with `HttpClient`, `ClientWebSocket` and `System.Text.Json`, without an SDK. It covers:
 
-- **Pre-recorded transcription** on Universal-3.5 Pro with Medical Mode, speaker diarization and Speaker Identification
+- **Pre-recorded transcription** on Universal-3.5 Pro with Medical Mode, speaker diarization and Speaker Identification, with polling for results
 - **The Dictation API**, uploading while the clinician is still talking
 - **Streaming** on Universal-3.6 Pro with Medical Mode and real-time speaker labels
 - **LLM Gateway** for drafting notes from a transcript
-- **Webhooks**, with a minimal receiver
 
 The archived C# SDK predates most of the current API. Its request types can't express `speech_models`, `keyterms_prompt`, `prompt`, `domain` or `speech_understanding`, and it has no Dictation or current Streaming support. The API itself is plain HTTP, JSON and WebSocket, so a thin client is all you need. Every request model here also has an `AdditionalProperties` escape hatch, so you can send a new parameter the day it ships instead of waiting on a library.
 
@@ -28,13 +27,12 @@ The audio in `samples/audio` is synthetic, generated with text-to-speech, so it 
 
 | Path | What it shows |
 | --- | --- |
-| `src/AssemblyAI.Reference/Async` | Upload, submit, poll, fetch and delete pre-recorded transcripts |
+| `src/AssemblyAI.Reference/Async` | Upload, submit, poll for results, fetch and delete pre-recorded transcripts |
 | `src/AssemblyAI.Reference/Dictation` | Both Dictation routes, including streaming the upload while recording |
 | `src/AssemblyAI.Reference/Streaming` | WebSocket session, typed messages, transcript assembly, temporary tokens |
 | `src/AssemblyAI.Reference/LlmGateway` | Chat completions and Speech Understanding on an existing transcript |
-| `src/AssemblyAI.Reference/Webhooks` | Webhook payload and constant-time auth header check |
 | `src/AssemblyAI.Reference/Http` | Retry policy and error parsing shared by every client |
-| `samples/*` | One runnable console app per product, plus an ASP.NET Core webhook receiver |
+| `samples/*` | One runnable console app per product |
 
 ## Using the library
 
@@ -43,7 +41,7 @@ using var client = new AssemblyAIClient(AssemblyAIOptions.FromEnvironment());
 
 var audioUrl = await client.Transcripts.UploadFileAsync("visit.wav");
 
-var transcript = await client.Transcripts.TranscribeAsync(new TranscriptRequest
+var transcript = await client.Transcripts.TranscribeAsync(new TranscriptRequest   // submits, then polls until done
 {
     AudioUrl = audioUrl,
     SpeechModels = SpeechModels.Recommended,      // ["universal-3-5-pro", "universal-2"]
@@ -80,16 +78,36 @@ Authentication is the raw API key in the `Authorization` header, with no `Bearer
 - **[Speaker diarization](https://www.assemblyai.com/docs/pre-recorded-audio/label-speakers)**: set `speaker_labels: true`, and either `speakers_expected` or `speaker_options` (not both). A min/max range handles visits where a family member joins.
 - **[Speaker Identification](https://www.assemblyai.com/docs/speech-understanding/speaker-identification)** relabels `A`/`B` as roles or names from what each person says. It needs speaker labels. The mapping comes back in `speech_understanding.response.speaker_identification`, and `utterances[].speaker` holds the role. To relabel a transcript you already have, use `LlmGatewayClient.RunSpeechUnderstandingAsync`.
 - **[Keyterms](https://www.assemblyai.com/docs/pre-recorded-audio/universal-3-5-pro/prompting#keyterms-prompting)** (`keyterms_prompt`, up to 1,000 words on Universal-3.5 Pro) work alongside Medical Mode. Start without them, then add the drug, procedure and provider names the model misses on your audio. `prompt` describes the audio and can be combined with keyterms.
-- **Polling vs. webhooks.** `WaitForCompletionAsync` starts at 3 seconds, backs off to 15 seconds and adds jitter. At production volume, use [webhooks](https://www.assemblyai.com/docs/pre-recorded-audio/webhooks) and keep a slower poll as a fallback. Excess jobs are queued rather than rejected. See [transcribing at scale](https://www.assemblyai.com/docs/pre-recorded-audio/guides/bulk-transcription-and-load-tests-at-scale).
 - **Retention.** [`DELETE /v2/transcript/{id}`](https://www.assemblyai.com/docs/pre-recorded-audio/delete-transcripts) removes the transcript, its outputs and any audio uploaded through `/v2/upload` immediately. Call it as soon as you've stored the result, rather than relying on the retention TTL.
 - **Errors.** Non-2xx responses throw `AssemblyAIApiException` with the API's message. A transcript that finishes with `status: "error"` makes `TranscribeAsync` throw `TranscriptFailedException`. Unknown top-level request fields are rejected with a 400, so a typo fails loudly.
+
+### Polling for results
+
+`SubmitAsync` returns as soon as the job is queued. `WaitForCompletionAsync` then polls `GET /v2/transcript/{id}` until the status is `completed` or `error` ([docs](https://www.assemblyai.com/docs/pre-recorded-audio/check-transcript-status)). `TranscribeAsync` does both in one call.
+
+```csharp
+var submitted = await client.Transcripts.SubmitAsync(request);
+
+// Store submitted.Id with your record. The job keeps running on AssemblyAI's side,
+// so after a restart you can resume polling with the stored id.
+var transcript = await client.Transcripts.WaitForCompletionAsync(submitted.Id);
+if (transcript.IsError)
+{
+    // transcript.Error says why, for example a file with no speech in it
+}
+```
+
+- **Cadence.** The first check is after 3 seconds. Each wait after that is 1.5 times longer, up to 15 seconds, with ±25% jitter so jobs finishing at the same time don't poll in lockstep. Tune it with `PollingOptions`.
+- **Many jobs at once.** Each `WaitForCompletionAsync` call is independent. Run one per job (for example with `Task.WhenAll`), or have a background worker poll the IDs you've stored. Jobs over your concurrency limit are queued rather than rejected.
+- **Rate limit.** Polls and submissions share one HTTP limit of 20,000 requests per five minutes, and going over it returns a 403 ([docs](https://www.assemblyai.com/docs/pre-recorded-audio/rate-limits)). At a 15-second interval that's room for about 1,000 jobs in flight before counting submissions. Past that, raise `MaxInterval`. The retry handler backs off and retries a polling request that gets a 403, so a brief spike doesn't fail the job. See [polling without exceeding the rate limit](https://www.assemblyai.com/docs/pre-recorded-audio/guides/bulk-transcription-and-load-tests-at-scale#polling-without-exceeding-the-rate-limit).
+- **Timeout.** `WaitForCompletionAsync` stops waiting after an hour by default (`PollingOptions.Timeout`). The job itself isn't affected, so you can poll it again later.
 
 ### What gets retried
 
 `RetryHandler` retries:
 
 - **429 on any method.** The request was rejected before it was processed, so sending it again is safe.
-- **5xx and network failures on GET, HEAD and DELETE only.** A retried `POST /v2/transcript` after a 5xx could create a second job and bill twice.
+- **5xx, 403 and network failures on GET, HEAD and DELETE only.** The pre-recorded API answers 403 when you go over its HTTP rate limit. A `POST /v2/transcript` isn't retried on a 5xx, because that could create a second job and bill twice, or on a 403, which on a POST can be a real permission error.
 - **Never a request whose body is a stream**, such as file uploads or live dictation audio.
 
 It honors `Retry-After` and otherwise backs off exponentially with jitter.
@@ -138,14 +156,6 @@ It honors `Retry-After` and otherwise backs off exponentially with jitter.
 ## LLM Gateway
 
 `CreateChatCompletionAsync` posts an OpenAI-shaped chat completion to `https://llm-gateway.assemblyai.com/v1/chat/completions`. The AsyncScribe sample's `--soap-note` flag drafts a SOAP note from the speaker-attributed utterances with `claude-sonnet-4-6`, the model our [medical scribe guide](https://www.assemblyai.com/docs/medical-scribe-best-practices) uses. For how inputs and outputs are retained per provider, see [data retention](https://www.assemblyai.com/docs/data-retention-and-model-training). [Docs](https://www.assemblyai.com/docs/llm-gateway/chat-completions)
-
-## Webhooks
-
-- **What arrives.** When a job finishes, AssemblyAI POSTs `{"transcript_id", "status"}` to your `webhook_url`. The body carries no transcript text.
-- **Authenticating it.** Set `webhook_auth_header_name` and `webhook_auth_header_value` and check the header on arrival. `WebhookAuthentication.IsValid` compares in constant time.
-- **Responding.** Return a 2xx within 10 seconds, then fetch the transcript. Slower responses count as failures and are retried.
-- **Allowlisting.** Requests come from `44.238.19.20` (US) and `54.220.25.36` (EU).
-- **Sample.** `samples/WebhookReceiver` acknowledges immediately, then fetches, stores and deletes the transcript on a background worker. It logs only IDs and counts, never transcript text. [Docs](https://www.assemblyai.com/docs/pre-recorded-audio/webhooks)
 
 ## Regions
 

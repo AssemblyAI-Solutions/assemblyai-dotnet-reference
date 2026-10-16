@@ -49,6 +49,30 @@ public class RetryHandlerTests
     }
 
     [Fact]
+    public async Task Polling_get_is_retried_on_403_because_that_is_the_http_rate_limit_response()
+    {
+        var fake = new FakeHandler()
+            .Respond(HttpStatusCode.Forbidden)
+            .Respond(HttpStatusCode.OK, "{}");
+
+        var response = await Client(fake).GetAsync("https://api.assemblyai.com/v2/transcript/abc");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, fake.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Post_is_not_retried_on_403_because_it_can_be_a_real_permission_error()
+    {
+        var fake = new FakeHandler().Respond(HttpStatusCode.Forbidden, "{\"error\":\"Cannot access uploaded file\"}");
+
+        var response = await Client(fake).PostAsync("https://api.assemblyai.com/v2/transcript", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Single(fake.Requests);
+    }
+
+    [Fact]
     public async Task Streamed_bodies_are_never_retried()
     {
         var fake = new FakeHandler().Respond(HttpStatusCode.TooManyRequests);

@@ -28,6 +28,9 @@ public sealed class DictationClient
     /// read, so most of the utterance has been uploaded by the time the user stops talking. Pass a
     /// <see cref="Audio.ProducerStream"/> fed from your microphone, and complete it when recording stops.
     /// The <c>config</c> part is always sent first, which this route requires.
+    /// <para>
+    /// The route accepts up to 120 seconds of audio, so cap recordings at that length on your side.
+    /// </para>
     /// </summary>
     public async Task<DictationResult> TranscribeLiveAsync(
         Stream audio,
@@ -42,6 +45,7 @@ public sealed class DictationClient
 
         var contentType = format == LiveAudioFormat.Wav ? "audio/wav" : "audio/pcm";
         using var request = NewRequest("/v1/transcribe/live", BuildMultipart(audio, contentType, config ?? new DictationConfig()));
+
         request.Headers.TransferEncodingChunked = true;
         return await SendAsync(request, cancellationToken).ConfigureAwait(false);
     }

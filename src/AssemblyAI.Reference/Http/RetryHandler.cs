@@ -8,6 +8,7 @@ namespace AssemblyAI.Reference.Http;
 /// <list type="bullet">
 ///   <item><description><b>429 Too Many Requests</b> on any method, because the request was rejected before it was processed.</description></item>
 ///   <item><description><b>5xx, 408 and network failures</b> only on idempotent methods (GET, HEAD, DELETE), because a retried POST could create a second transcript and bill twice.</description></item>
+///   <item><description><b>403 on idempotent methods</b>, because the pre-recorded API answers 403 (not 429) when you exceed its HTTP rate limit, which is what a busy polling loop would hit.</description></item>
 /// </list>
 /// Requests whose body is a stream (file uploads, live dictation audio) are never retried, since the stream can't be replayed.
 /// <c>Retry-After</c> is honored; otherwise the delay is exponential with jitter.
@@ -63,7 +64,9 @@ public sealed class RetryHandler : DelegatingHandler
             return true;
         }
 
-        var transient = status == HttpStatusCode.RequestTimeout || (int)status >= 500;
+        // 403 is how the pre-recorded API signals "over the HTTP rate limit". A POST can also get 403 for a real
+        // permission problem (an upload_url from another project), so only idempotent requests retry it.
+        var transient = status == HttpStatusCode.RequestTimeout || status == HttpStatusCode.Forbidden || (int)status >= 500;
         return transient && IsIdempotent(request.Method);
     }
 

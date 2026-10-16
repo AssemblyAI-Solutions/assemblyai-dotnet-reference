@@ -53,10 +53,6 @@ public sealed class Transcript
     [JsonPropertyName("speech_understanding")]
     public SpeechUnderstandingResult? SpeechUnderstanding { get; init; }
 
-    /// <summary>HTTP status your webhook endpoint returned (999 means no response).</summary>
-    [JsonPropertyName("webhook_status_code")]
-    public int? WebhookStatusCode { get; init; }
-
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalProperties { get; init; }
 

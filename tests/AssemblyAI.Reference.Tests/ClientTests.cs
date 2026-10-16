@@ -6,7 +6,6 @@ using AssemblyAI.Reference.Http;
 using AssemblyAI.Reference.LlmGateway;
 using AssemblyAI.Reference.SpeechUnderstanding;
 using AssemblyAI.Reference.Streaming;
-using AssemblyAI.Reference.Webhooks;
 
 namespace AssemblyAI.Reference.Tests;
 
@@ -188,6 +187,7 @@ public class DictationClientTests
 
         var sent = Assert.Single(fake.Requests);
         Assert.Equal("https://dictation.us.assemblyai.com/v1/transcribe/live", sent.Uri.ToString());
+        Assert.Equal("chunked", sent.Headers["Transfer-Encoding"]);
         Assert.Equal("test-key", sent.Headers["Authorization"]);
         Assert.StartsWith("multipart/form-data", sent.ContentType);
 
@@ -318,7 +318,7 @@ public class StreamingTests
     }
 }
 
-public class LlmGatewayAndWebhookTests
+public class LlmGatewayTests
 {
     [Fact]
     public async Task Chat_completion_posts_to_the_gateway_and_reads_the_first_choice()
@@ -359,22 +359,5 @@ public class LlmGatewayAndWebhookTests
         Assert.Equal("t1", body.RootElement.GetProperty("transcript_id").GetString());
         Assert.Equal("role", body.RootElement.GetProperty("speech_understanding").GetProperty("request").GetProperty("speaker_identification").GetProperty("speaker_type").GetString());
         Assert.Equal("Provider", response.Utterances![0].Speaker);
-    }
-
-    [Theory]
-    [InlineData("s3cret", "s3cret", true)]
-    [InlineData("s3cret", "S3cret", false)]
-    [InlineData(null, "s3cret", false)]
-    [InlineData("s3cre", "s3cret", false)]
-    public void Webhook_auth_header_check(string? received, string expected, bool valid) =>
-        Assert.Equal(valid, WebhookAuthentication.IsValid(received, expected));
-
-    [Fact]
-    public void Webhook_payload_binds_from_the_api_field_names()
-    {
-        var notification = AssemblyAIJson.Deserialize<WebhookNotification>("""{"transcript_id":"t1","status":"completed"}""");
-
-        Assert.Equal("t1", notification.TranscriptId);
-        Assert.Equal("completed", notification.Status);
     }
 }
