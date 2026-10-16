@@ -26,6 +26,11 @@ public sealed class StreamingParameters
     /// <summary><c>medical-v1</c> turns on Medical Mode. It corrects final turns only and is billed as an add-on.</summary>
     public string? Domain { get; init; }
 
+    /// <summary>
+    /// Label final turns and words by speaker. This also switches turn detection to values tuned for diarization, so
+    /// turns end when the speaker changes. Leave <see cref="MinTurnSilence"/> and <see cref="MaxTurnSilence"/> unset
+    /// with it, since values you set replace those.
+    /// </summary>
     public bool? SpeakerLabels { get; init; }
 
     /// <summary>Hard cap on speaker labels (1-10). Leave a little headroom above the speakers you expect.</summary>
@@ -49,10 +54,10 @@ public sealed class StreamingParameters
     /// <summary><c>min_latency</c>, <c>balanced</c> (default) or <c>max_accuracy</c>.</summary>
     public string? Mode { get; init; }
 
-    /// <summary>Silence (ms) before the server checks whether the turn has ended.</summary>
+    /// <summary>Silence (ms) before the server checks whether the turn has ended. One clinician dictating: 800.</summary>
     public int? MinTurnSilence { get; init; }
 
-    /// <summary>Silence (ms) after which the turn is ended regardless.</summary>
+    /// <summary>Silence (ms) after which the turn is ended regardless. One clinician dictating: 3600.</summary>
     public int? MaxTurnSilence { get; init; }
 
     /// <summary>Close the session after this many seconds without any message from you (5-3600).</summary>

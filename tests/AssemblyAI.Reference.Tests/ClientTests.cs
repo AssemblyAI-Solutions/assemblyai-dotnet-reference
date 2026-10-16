@@ -310,6 +310,58 @@ public class StreamingTests
     }
 
     [Fact]
+    public void Assembler_splits_turns_by_word_speaker_and_joins_runs_across_turns()
+    {
+        var assembler = new TranscriptAssembler();
+        // Two speakers inside one turn, the first word not yet attributed, then the second speaker carrying on.
+        assembler.Apply(StreamingMessage.Parse("""
+            {"type":"Turn","turn_order":0,"end_of_turn":true,"transcript":"Good morning. Chest pain.","speaker_label":"B","words":[
+             {"text":"Good","start":0,"end":200,"speaker":"PENDING"},{"text":"morning.","start":200,"end":600,"speaker":"A"},
+             {"text":"Chest","start":1400,"end":1700,"speaker":"B"},{"text":"pain.","start":1700,"end":2000,"speaker":"B"}]}
+            """));
+        assembler.Apply(StreamingMessage.Parse("""
+            {"type":"Turn","turn_order":1,"end_of_turn":true,"transcript":"Mostly at night.","speaker_label":"B","words":[
+             {"text":"Mostly","start":2100,"end":2400,"speaker":"B"},{"text":"at","start":2400,"end":2500},
+             {"text":"night.","start":2500,"end":2900,"speaker":"B"}]}
+            """));
+
+        var utterances = assembler.Utterances();
+
+        Assert.Equal("A,B", string.Join(",", utterances.Select(u => u.Speaker)));
+        Assert.Equal("Good morning.", utterances[0].Text);
+        Assert.Equal("Chest pain. Mostly at night.", utterances[1].Text);
+        Assert.Equal(2900, utterances[1].Words[^1].End);
+    }
+
+    [Fact]
+    public void Assembler_applies_revised_word_speakers()
+    {
+        var assembler = new TranscriptAssembler();
+        assembler.Apply(StreamingMessage.Parse("""
+            {"type":"Turn","turn_order":0,"end_of_turn":true,"transcript":"Any pain? No.","speaker_label":"A","words":[
+             {"text":"Any","start":0,"end":200,"speaker":"A"},{"text":"pain?","start":200,"end":500,"speaker":"A"},
+             {"text":"No.","start":900,"end":1100,"speaker":"A"}]}
+            """));
+        assembler.Apply(StreamingMessage.Parse("""
+            {"type":"SpeakerRevision","revisions":[{"turn_order":0,"speaker_label":"A","words":[
+             {"text":"Any","start":0,"end":200,"speaker":"A"},{"text":"pain?","start":200,"end":500,"speaker":"A"},
+             {"text":"No.","start":900,"end":1100,"speaker":"B"}]}]}
+            """));
+
+        Assert.Equal($"Speaker A: Any pain?{Environment.NewLine}Speaker B: No.{Environment.NewLine}", assembler.ToText());
+    }
+
+    [Fact]
+    public void Assembler_keeps_one_line_per_turn_without_speaker_labels()
+    {
+        var assembler = new TranscriptAssembler();
+        assembler.Apply(StreamingMessage.Parse("""{"type":"Turn","turn_order":0,"end_of_turn":true,"transcript":"Start aspirin.","words":[{"text":"Start","start":0,"end":300},{"text":"aspirin.","start":300,"end":800}]}"""));
+        assembler.Apply(StreamingMessage.Parse("""{"type":"Turn","turn_order":1,"end_of_turn":true,"transcript":"Recheck in two weeks.","words":[{"text":"Recheck","start":1500,"end":1900},{"text":"in","start":1900,"end":2000},{"text":"two","start":2000,"end":2200},{"text":"weeks.","start":2200,"end":2600}]}"""));
+
+        Assert.Equal($"Start aspirin.{Environment.NewLine}Recheck in two weeks.{Environment.NewLine}", assembler.ToText());
+    }
+
+    [Fact]
     public void Update_configuration_sends_keyterms_as_a_real_json_array()
     {
         var json = AssemblyAIJson.Serialize(new StreamingConfigurationUpdate { KeytermsPrompt = new[] { "metoprolol" }, MinTurnSilence = 1200 });

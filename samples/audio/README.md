@@ -4,7 +4,7 @@ Both files are synthetic, generated with macOS text-to-speech, so they contain n
 
 | File | Length | Contents |
 | --- | --- | --- |
-| `dictation.wav` | 22.7 s | One speaker dictating a visit note, saying punctuation aloud ("comma", "period") and naming medications (azithromycin, albuterol) |
+| `dictation.wav` | 24.9 s | One speaker dictating a visit note, saying punctuation aloud ("comma", "period", "colon"), giving a "new paragraph" command, and naming medications (azithromycin, albuterol) |
 | `visit.wav` | 48.8 s | A provider and a patient in two different voices, covering chest tightness, current medications (lisinopril, atorvastatin), and a plan (EKG, troponin, aspirin) |
 
 For real evaluation, use full-length recordings from your own clinicians and patients. Short synthetic clips show that the integration works, not how accurate it is on your audio.

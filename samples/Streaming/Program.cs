@@ -3,8 +3,8 @@
 //   dotnet run --project samples/Streaming -- samples/audio/visit.wav
 //   dotnet run --project samples/Streaming -- samples/audio/visit.wav --keyterms "lisinopril,atorvastatin"
 //
-// Prints each turn as it's finalized, then the transcript with the server's end-of-session speaker revision
-// applied. Requires ASSEMBLYAI_API_KEY.
+// Prints each turn as it's finalized, then the transcript rebuilt from per-word speaker labels, with the server's
+// end-of-session speaker revision applied. Requires ASSEMBLYAI_API_KEY.
 
 using System.Diagnostics;
 using AssemblyAI.Reference;
@@ -33,12 +33,12 @@ var parameters = new StreamingParameters
     SpeechModel = StreamingSpeechModels.Universal36Pro,
     SampleRate = wav.SampleRate,
     Domain = "medical-v1",   // Medical Mode corrects final turns
+    // Speaker labels switch turn detection to values tuned for diarization (640 / 768 ms), so turns end when the
+    // speaker changes. Leave MinTurnSilence and MaxTurnSilence unset here: values you set replace those, and at the
+    // 800 ms recommended for medical audio, a quick handover between doctor and patient stays inside one turn.
+    // For one clinician dictating without speaker labels, use 800 / 3600 ms.
     SpeakerLabels = true,
     MaxSpeakers = 3,
-    // Clinicians pause mid-sentence; the medical docs recommend 800 ms before checking for end of turn, and a
-    // max around 2000 ms for a real-time scribe (3600 ms for dictation).
-    MinTurnSilence = 800,
-    MaxTurnSilence = 2000,
     KeytermsPrompt = keyterms,
 };
 

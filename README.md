@@ -125,7 +125,7 @@ It honors `Retry-After` and otherwise backs off exponentially with jitter.
 - **Raw PCM** needs `sample_rate` and `channels` in the config. Use 16-bit little-endian PCM, mono or stereo.
 - **Clinical vocabulary.** Medical Mode isn't a Dictation option, and an unknown config field such as `domain` is rejected with a 400. Use `stt_prompt` to describe the audio (for example "A doctor dictating a patient visit note.") and `keyterms_prompt` for up to 100 terms. [Docs](https://www.assemblyai.com/docs/dictation/prompting-and-keyterms)
 - **The rewrite.** By default, cleanup removes fillers, resolves self-corrections, and applies punctuation and capitalization, keeping the wording as spoken. To get a different shape, set `llm_instruction` and describe only the transformation, for example "Rewrite as a concise clinical chart note." `llm_response` is null if the rewrite was skipped or failed (`llm_error` says why). `FinalText` falls back to `text`. [Docs](https://www.assemblyai.com/docs/dictation/transcript-rewriting)
-- **Spoken punctuation.** The default cleanup keeps words as spoken. To turn dictated commands like "comma" and "period" into punctuation, say so in `llm_instruction`; the sample's `--spoken-punctuation` flag shows one way. Test it on your own clinicians' audio.
+- **Spoken punctuation.** On the sample clip, the speech model already writes dictated "comma", "period" and "colon" as punctuation in `text`, with or without `stt_prompt`. Formatting commands such as "new paragraph" come through as words, and the default cleanup leaves them in. To apply those, describe them in `llm_instruction`. The sample's `--spoken-punctuation` flag does this and turns "new paragraph" into a blank line. Test it on your own clinicians' audio.
 - **Latency.** Call `WarmAsync()` (`GET /warm`) when recording starts, so the connection is open before the real request. [Docs](https://www.assemblyai.com/docs/dictation/connection-pre-warming)
 
 ## Streaming
@@ -137,14 +137,15 @@ It honors `Retry-After` and otherwise backs off exponentially with jitter.
 - **Parameters** go in the URL query. List parameters such as `keyterms_prompt` and `language_codes` are sent as one JSON array string. The server keeps only the first value of a repeated key, so `keyterms_prompt=a&keyterms_prompt=b` would silently drop every term after the first. Unknown parameters are ignored, so check `Begin.Configuration` to confirm what was applied.
 - **[Medical audio](https://www.assemblyai.com/docs/streaming/medical-mode).**
   - `domain=medical-v1` corrects final turns, so a turn's final text can differ from its last partial.
-  - Clinicians pause mid-sentence. Raise `min_turn_silence` to 800 ms, and `max_turn_silence` to about 2,000 ms for a real-time scribe or 3,600 ms for dictation. [Turn detection](https://www.assemblyai.com/docs/streaming/turn-detection)
+  - Clinicians pause mid-sentence. For one clinician dictating, raise `min_turn_silence` to 800 ms and `max_turn_silence` to 3,600 ms. With speaker labels on, leave both unset (see below). [Turn detection](https://www.assemblyai.com/docs/streaming/turn-detection)
 - **Audio.** Send binary frames of 20 to 1,000 ms; about 50 ms (1,600 bytes at 16 kHz mono) is recommended. Send in real time. Send one mono stream per connection; for two-channel calls, open one session per channel.
 - **Turns.** Every `Turn` message re-transcribes the whole turn, so replace what you hold for that `turn_order` rather than appending. The turn is final when `end_of_turn` is true. `TranscriptAssembler` does this for you.
 - **[Speaker labels](https://www.assemblyai.com/docs/streaming/label-speakers-and-separate-channels).**
-  - `speaker_labels=true` labels final turns. A turn too short to attribute comes back as `PENDING`.
-  - At the end of the session the server re-checks labels over the whole conversation and sends `SpeakerRevision` for the turns that changed. Use the revised labels for anything you store.
+  - `speaker_labels=true` labels final turns, and each final word carries its own `speaker`. A turn or word too short to attribute comes back as `PENDING`.
+  - Speaker labels switch turn detection to values tuned for diarization (640 and 768 ms), so turns end when the speaker changes. Leave `min_turn_silence` and `max_turn_silence` unset. Values you set replace those, and at the 800 ms recommended for medical audio, a quick handover between doctor and patient stays inside one turn.
+  - A quick handover can still put two speakers in one turn, and a long answer can arrive as several turns. Build stored transcripts from the word labels: `TranscriptAssembler.Utterances()` regroups consecutive words by speaker across turns.
+  - At the end of the session the server re-checks labels over the whole conversation and sends `SpeakerRevision` with corrected turn and word labels for the turns that changed. Use the revised labels for anything you store.
   - `speaker_labels_revision_interval_ms=300000` also sends revisions every 5 minutes.
-  - Turning on speaker labels also changes the turn-detection defaults, so set the silence values explicitly.
 - **Ending the session.** Call `TerminateAsync()`, then keep reading until `Termination`, which arrives after the last turn and any revision. Streaming bills on how long the session is open, not on audio duration, so don't leave idle sockets open.
 - **Mid-session changes.** `UpdateConfigurationAsync` changes settings such as keyterms or turn silence. Here `keyterms_prompt` is a real JSON array. Avoid sending `mode` mid-session: it re-applies that mode's whole profile and overwrites earlier silence settings.
 - **[Close codes](https://www.assemblyai.com/docs/streaming/common-session-errors-and-closures).**

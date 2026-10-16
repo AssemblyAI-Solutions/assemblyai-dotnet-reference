@@ -22,8 +22,9 @@ if (args.Length == 0)
 }
 
 const string SpokenPunctuation =
-    "Replace spoken punctuation commands such as \"comma\", \"period\", \"question mark\" and \"new paragraph\" " +
-    "with the punctuation they name. Keep every other word exactly as spoken.";
+    "Apply the speaker's dictation commands: replace \"comma\", \"period\", \"colon\" and \"question mark\" with " +
+    "the punctuation they name, \"new line\" with a line break, and \"new paragraph\" with a blank line. Keep every " +
+    "other word exactly as spoken.";
 
 var path = args[0];
 var recording = args.Contains("--recording");

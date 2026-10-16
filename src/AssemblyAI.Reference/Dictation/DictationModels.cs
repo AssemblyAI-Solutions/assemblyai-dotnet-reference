@@ -53,7 +53,7 @@ public sealed class DictationConfig
 /// <summary>Response from both Dictation routes.</summary>
 public sealed class DictationResult
 {
-    /// <summary>The transcript exactly as spoken.</summary>
+    /// <summary>The verbatim transcript, never altered by the rewrite.</summary>
     [JsonPropertyName("text")]
     public string Text { get; init; } = "";
 
