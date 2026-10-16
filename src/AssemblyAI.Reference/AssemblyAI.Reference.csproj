@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0 (LTS) so the library runs on .NET 8, 9 and 10. It has no package dependencies. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AssemblyAI.Reference</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AssemblyAI.Reference.Tests" />
+  </ItemGroup>
+
+</Project>
